@@ -21,18 +21,24 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Fungsi Load Dataset Langsung Menggunakan Pandas
+# 3. Fungsi Load Dataset (Mencoba berbagai kemungkinan nama file Excel)
 @st.cache_data
 def load_data():
-    try:
-        df = pd.read_excel("dataset_kopi_indonesia_2023.xlsx") 
-        return df
-    except Exception:
+    kemungkinan_nama_file = [
+        "dataset_kopi_indonesia_2023.xlsx",
+        "Dataset_Kopi_Nasional_Wide_Format_2021_2026.xlsx",
+        "dataset.xlsx",
+        "kopi.xlsx"
+    ]
+    for nama in kemungkinan_nama_file:
         try:
-            df = pd.read_excel("Dataset_Kopi_Nasional_Wide_Format_2021_2026.xlsx")
+            df = pd.read_excel(nama)
+            # Bersihkan spasi di nama kolom
+            df.columns = [str(c).strip() for c in df.columns]
             return df
         except Exception:
-            return None
+            continue
+    return None
 
 df = load_data()
 
@@ -70,18 +76,24 @@ def fmt(val):
         return str(val)
 
 # ==========================================
-# LOGIKA FILTER TAHUN YANG DIPERBAIKI (DINAMIS)
+# LOGIKA FILTER TAHUN & KOLOM OTOMATIS
 # ==========================================
+col_thn, col_rob, col_ara, col_prov = None, None, None, None
+
 if df is not None:
-    # Cari nama kolom tahun secara fleksibel
-    col_thn = None
     for c in df.columns:
-        if 'tahun' in c.lower() or 'year' in c.lower() or 'thn' in c.lower():
+        c_low = c.lower()
+        if 'tahun' in c_low or 'year' in c_low or 'thn' in c_low:
             col_thn = c
-            break
-            
+        if 'robusta' in c_low and ('produksi' in c_low or col_rob is None):
+            col_rob = c
+        if 'arabika' in c_low and ('produksi' in c_low or col_ara is None):
+            col_ara = c
+        if 'provinsi' in c_low or 'region' in c_low or 'daerah' in c_low:
+            col_prov = c
+
+    # Proses Filtering Berdasarkan Tahun
     if col_thn and selected_year != "Semua Tahun (2021-2026)":
-        # Bersihkan format angka (mengantisipasi 2021.0 di pandas)
         df_clean = df.copy()
         df_clean['tahun_str'] = df_clean[col_thn].astype(str).str.replace('.0', '', regex=False).str.strip()
         df_filtered = df_clean[df_clean['tahun_str'] == selected_year]
@@ -89,21 +101,6 @@ if df is not None:
         df_filtered = df
 else:
     df_filtered = pd.DataFrame()
-
-# Deteksi nama kolom otomatis untuk aman dari KeyError
-col_rob = None
-col_ara = None
-col_prov = None
-if df is not None:
-    col_rob = next((c for c in df.columns if 'robusta' in c.lower() and 'produksi' in c.lower()), None)
-    if not col_rob:
-        col_rob = next((c for c in df.columns if 'robusta' in c.lower()), None)
-        
-    col_ara = next((c for c in df.columns if 'arabika' in c.lower() and 'produksi' in c.lower()), None)
-    if not col_ara:
-        col_ara = next((c for c in df.columns if 'arabika' in c.lower()), None)
-        
-    col_prov = next((c for c in df.columns if 'provinsi' in c.lower()), None)
 
 # ==========================================
 # HALAMAN 1: OVERVIEW & PROVINSI
@@ -114,8 +111,13 @@ if menu == "Overview & Provinsi":
     total_ara_val = 0
     
     if not df_filtered.empty and col_rob and col_ara:
-        total_rob_val = df_filtered[col_rob].sum()
-        total_ara_val = df_filtered[col_ara].sum()
+        total_rob_val = pd.to_numeric(df_filtered[col_rob], errors='coerce').sum()
+        total_ara_val = pd.to_numeric(df_filtered[col_ara], errors='coerce').sum()
+        total_all_val = total_rob_val + total_ara_val
+    elif df is not None and col_rob and col_ara:
+        # Fallback jika filter kosong
+        total_rob_val = pd.to_numeric(df[col_rob], errors='coerce').sum()
+        total_ara_val = pd.to_numeric(df[col_ara], errors='coerce').sum()
         total_all_val = total_rob_val + total_ara_val
 
     k1, k2, k3 = st.columns(3)
@@ -147,7 +149,11 @@ if menu == "Overview & Provinsi":
         <h4 style='color: white; font-size:16px;'>🏆 Top 10 Provinsi Penghasil Kopi</h4>""", unsafe_allow_html=True)
         
         if not df_filtered.empty and col_prov and col_rob and col_ara:
-            df_grouped = df_filtered.groupby(col_prov)[[col_rob, col_ara]].sum().reset_index()
+            df_g = df_filtered.copy()
+            df_g[col_rob] = pd.to_numeric(df_g[col_rob], errors='coerce').fillna(0)
+            df_g[col_ara] = pd.to_numeric(df_g[col_ara], errors='coerce').fillna(0)
+            
+            df_grouped = df_g.groupby(col_prov)[[col_rob, col_ara]].sum().reset_index()
             df_grouped = df_grouped.sort_values(by=col_rob, ascending=False).head(10)
             
             fig = go.Figure(data=[
@@ -177,10 +183,7 @@ if menu == "Overview & Provinsi":
         <div style="background-color: #243542; padding: 25px; border-radius: 12px; border: 1px solid #324756; height: 100%;">
             <h4 style="color: #ffcc00; margin-top: 0; font-size: 16px;">💡 Analisis EduGrowth</h4>
             <p style="font-size: 14px; line-height: 1.6; color: #d0dbe3;">
-                Berdasarkan data <b>{selected_year}</b>, sistem telah memperbarui kalkulasi produksi secara otomatis sesuai dengan parameter filter yang aktif.
-            </p>
-            <p style="font-size: 14px; line-height: 1.6; color: #d0dbe3;">
-                Persebaran komoditas perkebunan kopi di berbagai wilayah dapat diamati secara langsung melalui grafik batang interaktif di samping.
+                Berdasarkan data <b>{selected_year}</b>, sistem memperbarui kalkulasi produksi secara dinamis sesuai filter tahun yang dipilih.
             </p>
             <br>
             <p style="font-size: 11px; color: #6b8090; font-style: italic;">
@@ -236,9 +239,22 @@ elif menu == "Data Spreadsheet":
         <h4 style='color: white; font-size:16px;'>📄 Data Spreadsheet Mentah (Dataset Kopi Nasional)</h4><br>""", unsafe_allow_html=True)
     
     if df is not None:
-        # Tampilkan data yang sudah terfilter berdasarkan tahun
         st.dataframe(df_filtered.drop(columns=['tahun_str'], errors='ignore'), use_container_width=True, height=450)
     else:
-        st.warning("File dataset belum ditemukan di repositori GitHub Anda. Pastikan file Excel sudah di-*push*!")
+        st.warning("File dataset belum ditemukan di repositori GitHub Anda!")
         
     st.markdown("</div>", unsafe_allow_html=True)
+
+# ==========================================
+# 🔍 PANEL DEBUG (Membantu Melihat Status File Excel)
+# ==========================================
+with st.expander("🛠️ Cek Status Koneksi Dataset Excel"):
+    if df is not None:
+        st.success(f"File Excel berhasil dimuat! Jumlah baris: {len(df)}")
+        st.write("Kolom yang terdeteksi di Excel Anda:", list(df.columns))
+        st.write(f"Kolom Tahun Terdeteksi: `{col_thn}`")
+        st.write(f"Kolom Robusta Terdeteksi: `{col_rob}`")
+        st.write(f"Kolom Arabika Terdeteksi: `{col_ara}`")
+        st.write(f"Kolom Provinsi Terdeteksi: `{col_prov}`")
+    else:
+        st.error("File Excel GAGAL dimuat! Pastikan nama file Excel di repositori GitHub sesuai.")
