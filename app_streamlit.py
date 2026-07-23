@@ -21,24 +21,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Fungsi Load Dataset (Mencoba berbagai kemungkinan nama file Excel)
+# 3. Fungsi Load Dataset (Menggunakan nama file Excel yang benar dari GitHub Anda)
 @st.cache_data
 def load_data():
-    kemungkinan_nama_file = [
-        "dataset_kopi_indonesia_2023.xlsx",
-        "Dataset_Kopi_Nasional_Wide_Format_2021_2026.xlsx",
-        "dataset.xlsx",
-        "kopi.xlsx"
-    ]
-    for nama in kemungkinan_nama_file:
-        try:
-            df = pd.read_excel(nama)
-            # Bersihkan spasi di nama kolom
-            df.columns = [str(c).strip() for c in df.columns]
-            return df
-        except Exception:
-            continue
-    return None
+    try:
+        df = pd.read_excel("Dataset_Kopi_Nasional_Wide_Format_2021_2026.xlsx") 
+        # Bersihkan spasi berlebih pada nama kolom
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
+    except Exception as e:
+        st.error(f"Gagal memuat file Excel: {e}")
+        return None
 
 df = load_data()
 
@@ -76,7 +69,7 @@ def fmt(val):
         return str(val)
 
 # ==========================================
-# LOGIKA FILTER TAHUN & KOLOM OTOMATIS
+# LOGIKA FILTER TAHUN & PENCARIAN KOLOM OTOMATIS
 # ==========================================
 col_thn, col_rob, col_ara, col_prov = None, None, None, None
 
@@ -115,7 +108,6 @@ if menu == "Overview & Provinsi":
         total_ara_val = pd.to_numeric(df_filtered[col_ara], errors='coerce').sum()
         total_all_val = total_rob_val + total_ara_val
     elif df is not None and col_rob and col_ara:
-        # Fallback jika filter kosong
         total_rob_val = pd.to_numeric(df[col_rob], errors='coerce').sum()
         total_ara_val = pd.to_numeric(df[col_ara], errors='coerce').sum()
         total_all_val = total_rob_val + total_ara_val
@@ -244,17 +236,3 @@ elif menu == "Data Spreadsheet":
         st.warning("File dataset belum ditemukan di repositori GitHub Anda!")
         
     st.markdown("</div>", unsafe_allow_html=True)
-
-# ==========================================
-# 🔍 PANEL DEBUG (Membantu Melihat Status File Excel)
-# ==========================================
-with st.expander("🛠️ Cek Status Koneksi Dataset Excel"):
-    if df is not None:
-        st.success(f"File Excel berhasil dimuat! Jumlah baris: {len(df)}")
-        st.write("Kolom yang terdeteksi di Excel Anda:", list(df.columns))
-        st.write(f"Kolom Tahun Terdeteksi: `{col_thn}`")
-        st.write(f"Kolom Robusta Terdeteksi: `{col_rob}`")
-        st.write(f"Kolom Arabika Terdeteksi: `{col_ara}`")
-        st.write(f"Kolom Provinsi Terdeteksi: `{col_prov}`")
-    else:
-        st.error("File Excel GAGAL dimuat! Pastikan nama file Excel di repositori GitHub sesuai.")
