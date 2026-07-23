@@ -25,15 +25,13 @@ st.markdown("""
 @st.cache_data
 def load_data():
     try:
-        # Ganti dengan nama file excel yang ada di repo GitHub Anda
         df = pd.read_excel("dataset_kopi_indonesia_2023.xlsx") 
         return df
-    except Exception as e:
+    except Exception:
         try:
-            # Coba nama alternatif jika ada
             df = pd.read_excel("Dataset_Kopi_Nasional_Wide_Format_2021_2026.xlsx")
             return df
-        except:
+        except Exception:
             return None
 
 df = load_data()
@@ -49,7 +47,7 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-# 5. Header Utama & Filter Tahun
+# 5. Header Utama & Filter Tahun (Manual agar pilihan tahun lengkap ke bawah)
 col_head1, col_head2 = st.columns([3, 1])
 with col_head1:
     st.markdown("<h1 style='margin-bottom: 0px;'>Produksi Kopi Nasional</h1>", unsafe_allow_html=True)
@@ -57,13 +55,10 @@ with col_head1:
 
 with col_head2:
     st.markdown("<br>", unsafe_allow_html=True)
-    list_tahun = ["Semua Tahun (2021-2026)"]
-    if df is not None:
-        # Cari kolom tahun secara otomatis
-        col_thn = next((c for c in df.columns if 'tahun' in c.lower()), None)
-        if col_thn:
-            list_tahun += sorted(df[col_thn].dropna().unique().astype(str).tolist())
-    
+    list_tahun = [
+        "Semua Tahun (2021-2026)", 
+        "2021", "2022", "2023", "2024", "2025", "2026"
+    ]
     selected_year = st.selectbox("Filter Tahun", list_tahun, label_visibility="collapsed")
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -76,7 +71,7 @@ def fmt(val):
 
 # Filter Data Berdasarkan Tahun
 if df is not None:
-    col_thn = next((c for c in df.columns if 'tahun' in c.lower()), None)
+    col_thn = next((c for c in df.columns if 'tahun' in c.lower() or 'year' in c.lower() or 'thn' in c.lower()), None)
     if selected_year != "Semua Tahun (2021-2026)" and col_thn:
         df_filtered = df[df[col_thn].astype(str) == selected_year]
     else:
