@@ -47,7 +47,7 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-# 5. Header Utama & Filter Tahun (Manual agar pilihan tahun lengkap ke bawah)
+# 5. Header Utama & Filter Tahun
 col_head1, col_head2 = st.columns([3, 1])
 with col_head1:
     st.markdown("<h1 style='margin-bottom: 0px;'>Produksi Kopi Nasional</h1>", unsafe_allow_html=True)
@@ -69,11 +69,22 @@ def fmt(val):
     except:
         return str(val)
 
-# Filter Data Berdasarkan Tahun
+# ==========================================
+# LOGIKA FILTER TAHUN YANG DIPERBAIKI (DINAMIS)
+# ==========================================
 if df is not None:
-    col_thn = next((c for c in df.columns if 'tahun' in c.lower() or 'year' in c.lower() or 'thn' in c.lower()), None)
-    if selected_year != "Semua Tahun (2021-2026)" and col_thn:
-        df_filtered = df[df[col_thn].astype(str) == selected_year]
+    # Cari nama kolom tahun secara fleksibel
+    col_thn = None
+    for c in df.columns:
+        if 'tahun' in c.lower() or 'year' in c.lower() or 'thn' in c.lower():
+            col_thn = c
+            break
+            
+    if col_thn and selected_year != "Semua Tahun (2021-2026)":
+        # Bersihkan format angka (mengantisipasi 2021.0 di pandas)
+        df_clean = df.copy()
+        df_clean['tahun_str'] = df_clean[col_thn].astype(str).str.replace('.0', '', regex=False).str.strip()
+        df_filtered = df_clean[df_clean['tahun_str'] == selected_year]
     else:
         df_filtered = df
 else:
@@ -98,9 +109,9 @@ if df is not None:
 # HALAMAN 1: OVERVIEW & PROVINSI
 # ==========================================
 if menu == "Overview & Provinsi":
-    total_all_val = 2915421
-    total_rob_val = 1921118
-    total_ara_val = 994303
+    total_all_val = 0
+    total_rob_val = 0
+    total_ara_val = 0
     
     if not df_filtered.empty and col_rob and col_ara:
         total_rob_val = df_filtered[col_rob].sum()
@@ -145,8 +156,8 @@ if menu == "Overview & Provinsi":
             ])
         else:
             fig = go.Figure(data=[
-                go.Bar(name='Robusta', x=['Sumatera Selatan', 'Lampung', 'Aceh'], y=[1068716, 680000, 79800], marker_color='#ffcc00'),
-                go.Bar(name='Arabika', x=['Sumatera Selatan', 'Lampung', 'Aceh'], y=[50000, 10000, 412000], marker_color='#e67e22')
+                go.Bar(name='Robusta', x=['Data Kosong'], y=[0], marker_color='#ffcc00'),
+                go.Bar(name='Arabika', x=['Data Kosong'], y=[0], marker_color='#e67e22')
             ])
 
         fig.update_layout(
@@ -166,13 +177,10 @@ if menu == "Overview & Provinsi":
         <div style="background-color: #243542; padding: 25px; border-radius: 12px; border: 1px solid #324756; height: 100%;">
             <h4 style="color: #ffcc00; margin-top: 0; font-size: 16px;">💡 Analisis EduGrowth</h4>
             <p style="font-size: 14px; line-height: 1.6; color: #d0dbe3;">
-                Berdasarkan data {selected_year}, <b>Sumatera Selatan</b> memimpin sebagai produsen <b>Kopi Robusta</b> terbesar dengan total produksi mencapai <span style="color: #ffcc00;">1.068.716 Ton</span>.
+                Berdasarkan data <b>{selected_year}</b>, sistem telah memperbarui kalkulasi produksi secara otomatis sesuai dengan parameter filter yang aktif.
             </p>
             <p style="font-size: 14px; line-height: 1.6; color: #d0dbe3;">
-                Di sisi lain, untuk pasar <b>Kopi Arabika</b>, wilayah <b>Sumatera Utara</b> mendominasi dengan angka produksi sebesar <span style="color: #e67e22;">512.408 Ton</span>.
-            </p>
-            <p style="font-size: 14px; line-height: 1.6; color: #d0dbe3;">
-                Secara umum, provinsi-provinsi di Pulau Sumatera mendominasi sentra kopi nasional.
+                Persebaran komoditas perkebunan kopi di berbagai wilayah dapat diamati secara langsung melalui grafik batang interaktif di samping.
             </p>
             <br>
             <p style="font-size: 11px; color: #6b8090; font-style: italic;">
@@ -228,7 +236,8 @@ elif menu == "Data Spreadsheet":
         <h4 style='color: white; font-size:16px;'>📄 Data Spreadsheet Mentah (Dataset Kopi Nasional)</h4><br>""", unsafe_allow_html=True)
     
     if df is not None:
-        st.dataframe(df_filtered, use_container_width=True, height=450)
+        # Tampilkan data yang sudah terfilter berdasarkan tahun
+        st.dataframe(df_filtered.drop(columns=['tahun_str'], errors='ignore'), use_container_width=True, height=450)
     else:
         st.warning("File dataset belum ditemukan di repositori GitHub Anda. Pastikan file Excel sudah di-*push*!")
         
