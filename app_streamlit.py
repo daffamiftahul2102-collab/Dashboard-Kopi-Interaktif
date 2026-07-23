@@ -33,6 +33,19 @@ def load_data():
 
 df = load_data()
 
+# Fungsi pembersih angka format Indonesia (mengubah "1.068.716" menjadi angka asli)
+def clean_val(val):
+    try:
+        if pd.isna(val):
+            return 0.0
+        if isinstance(val, (int, float)):
+            return float(val)
+        # Bersihkan titik pemisah ribuan
+        s = str(val).replace('.', '').replace(',', '.').replace(' ', '')
+        return float(s)
+    except:
+        return 0.0
+
 # 4. Sidebar Navigasi
 with st.sidebar:
     st.markdown("<h2 style='color: #ffb833; margin-bottom: 0;'>KOPI Indonesia</h2>", unsafe_allow_html=True)
@@ -67,21 +80,16 @@ def fmt(val):
         return str(val)
 
 # ==========================================
-# DETEKSI STRUKTUR WIDE FORMAT & FILTER
+# FILTER & PENGOLAHAN DATA WIDE FORMAT
 # ==========================================
-# Cek apakah tahun ada sebagai kolom (Wide Format) atau sebagai baris (Long Format)
 cols_in_df = df.columns.tolist() if df is not None else []
-tahun_sebagai_kolom = [t for t in ['2021', '2022', '2023', '2024', '2025', '2026'] if t in cols_in_df]
 
 if df is not None:
-    # Jika tahun ada di nama kolom (Wide Format) dan user memilih tahun tertentu
     if selected_year != "Semua Tahun (2021-2026)" and selected_year in cols_in_df:
-        # Ambil kolom Provinsi dan kolom tahun yang dipilih
-        prov_col = next((c for c in df.columns if 'provinsi' in c.lower() or 'region' in c.lower()), df.columns[0])
-        
-        # Cari kolom robusta/arabika yang sesuai dengan tahun tersebut atau gunakan kolom yang ada
+        prov_col = next((c for c in df.columns if 'provinsi' in c.lower() or 'region' in c.lower() or 'daerah' in c.lower()), df.columns[0])
         df_filtered = df[[prov_col, selected_year]].copy()
-        df_filtered.columns = ['Provinsi', 'Total Produksi']
+        df_filtered.columns = ['Provinsi', 'Produksi']
+        df_filtered['Produksi'] = df_filtered['Produksi'].apply(clean_val)
     else:
         df_filtered = df
 else:
@@ -91,17 +99,17 @@ else:
 # HALAMAN 1: OVERVIEW & PROVINSI
 # ==========================================
 if menu == "Overview & Provinsi":
-    # Hitung total dari data terfilter
     total_all_val = 0
     if not df_filtered.empty:
-        # Jika wide format per tahun
-        numeric_cols = df_filtered.select_dtypes(include=['number']).columns
-        if len(numeric_cols) > 0:
-            total_all_val = df_filtered[numeric_cols[0]].sum()
+        if selected_year != "Semua Tahun (2021-2026)":
+            total_all_val = df_filtered['Produksi'].sum()
         else:
-            total_all_val = 2915421
-    else:
-        total_all_val = 0
+            # Jika semua tahun, jumlahkan seluruh kolom tahun yang ada (2021-2026)
+            tahun_list = [t for t in ['2021', '2022', '2023', '2024', '2025', '2026'] if t in df.columns]
+            if tahun_list:
+                total_all_val = sum(df[tahun_list].applymap(clean_val).sum().sum())
+            else:
+                total_all_val = 2915421
 
     k1, k2, k3 = st.columns(3)
     with k1:
@@ -132,9 +140,17 @@ if menu == "Overview & Provinsi":
         <h4 style='color: white; font-size:16px;'>🏆 Top 10 Provinsi Penghasil Kopi</h4>""", unsafe_allow_html=True)
         
         if not df_filtered.empty:
-            prov_col = df_filtered.columns[0]
-            val_col = df_filtered.columns[1] if len(df_filtered.columns) > 1 else df_filtered.columns[0]
-            
+            if selected_year != "Semua Tahun (2021-2026)":
+                prov_col = 'Provinsi'
+                val_col = 'Produksi'
+            else:
+                prov_col = next((c for c in df.columns if 'provinsi' in c.lower() or 'region' in c.lower()), df.columns[0])
+                # Ambil kolom numerik pertama atau gabungkan
+                val_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+                df_filtered = df.copy()
+                df_filtered['Val_Sum'] = df_filtered.select_dtypes(include=['number']).sum(axis=1) if len(df_filtered.select_dtypes(include=['number']).columns) > 0 else 0
+                val_col = 'Val_Sum'
+
             df_g = df_filtered.sort_values(by=val_col, ascending=False).head(10)
             
             fig = go.Figure(data=[
@@ -158,7 +174,7 @@ if menu == "Overview & Provinsi":
         <div style="background-color: #243542; padding: 25px; border-radius: 12px; border: 1px solid #324756; height: 100%;">
             <h4 style="color: #ffcc00; margin-top: 0; font-size: 16px;">💡 Analisis EduGrowth</h4>
             <p style="font-size: 14px; line-height: 1.6; color: #d0dbe3;">
-                Filter aktif: <b>{selected_year}</b>. Data berhasil disesuaikan berdasarkan kolom format tahun di dataset.
+                Filter aktif: <b>{selected_year}</b>. Data berhasil dikalkulasi otomatis secara dinamis dari format tabel Excel.
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -169,15 +185,15 @@ if menu == "Overview & Provinsi":
 elif menu == "Tren Tahunan":
     st.markdown("""<div style="background-color: #243542; padding: 20px; border-radius: 12px; border: 1px solid #324756;">""", unsafe_allow_html=True)
     
-    # Hitung total per tahun dari kolom wide format jika ada
     t_years = ['2021', '2022', '2023', '2024', '2025', '2026']
     t_vals = []
     if df is not None:
         for yr in t_years:
             if yr in df.columns:
-                t_vals.append(pd.to_numeric(df[yr], errors='coerce').sum())
+                sum_yr = df[yr].apply(clean_val).sum()
+                t_vals.append(sum_yr)
             else:
-                t_vals.append(0)
+                t_vals.append(0.0)
     else:
         t_vals = [0, 0, 0, 0, 0, 0]
 
@@ -206,14 +222,7 @@ elif menu == "Data Spreadsheet":
         <h4 style='color: white; font-size:16px;'>📄 Data Spreadsheet Mentah (Dataset Kopi Nasional)</h4><br>""", unsafe_allow_html=True)
     
     if df is not None:
-        st.dataframe(df_filtered, use_container_width=True, height=450)
+        st.dataframe(df, use_container_width=True, height=450)
     else:
         st.warning("File dataset belum ditemukan.")
     st.markdown("</div>", unsafe_allow_html=True)
-
-# Expander Diagnostik Kolom Excel
-with st.expander("🔍 Lihat Kolom Asli yang Terbaca di Excel"):
-    if df is not None:
-        st.write("Daftar Kolom:", df.columns.tolist())
-    else:
-        st.error("File tidak terbaca.")
