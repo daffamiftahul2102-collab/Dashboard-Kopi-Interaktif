@@ -25,12 +25,16 @@ st.markdown("""
 @st.cache_data
 def load_data():
     try:
-        # Sesuaikan nama file Excel/CSV lu yang ada di GitHub
+        # Ganti dengan nama file excel yang ada di repo GitHub Anda
         df = pd.read_excel("dataset_kopi_indonesia_2023.xlsx") 
         return df
     except Exception as e:
-        # Fallback jika nama filenya berbeda, coba baca file lain atau buat dummy jika gagal
-        return None
+        try:
+            # Coba nama alternatif jika ada
+            df = pd.read_excel("Dataset_Kopi_Nasional_Wide_Format_2021_2026.xlsx")
+            return df
+        except:
+            return None
 
 df = load_data()
 
@@ -53,48 +57,61 @@ with col_head1:
 
 with col_head2:
     st.markdown("<br>", unsafe_allow_html=True)
-    # Filter Tahun interaktif langsung di Streamlit
     list_tahun = ["Semua Tahun (2021-2026)"]
-    if df is not None and 'Tahun' in df.columns:
-        list_tahun += sorted(df['Tahun'].dropna().unique().astype(str).tolist())
+    if df is not None:
+        # Cari kolom tahun secara otomatis
+        col_thn = next((c for c in df.columns if 'tahun' in c.lower()), None)
+        if col_thn:
+            list_tahun += sorted(df[col_thn].dropna().unique().astype(str).tolist())
     
     selected_year = st.selectbox("Filter Tahun", list_tahun, label_visibility="collapsed")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Fungsi Format Angka ke Rupiah/Indonesia (ribuan pakai titik)
 def fmt(val):
     try:
         return f"{int(val):,}".replace(",", ".")
     except:
         return str(val)
 
-# Logika Filter Data Berdasarkan Tahun yang Dipilih
+# Filter Data Berdasarkan Tahun
 if df is not None:
-    if selected_year != "Semua Tahun (2021-2026)":
-        df_filtered = df[df['Tahun'].astype(str) == selected_year]
+    col_thn = next((c for c in df.columns if 'tahun' in c.lower()), None)
+    if selected_year != "Semua Tahun (2021-2026)" and col_thn:
+        df_filtered = df[df[col_thn].astype(str) == selected_year]
     else:
         df_filtered = df
 else:
     df_filtered = pd.DataFrame()
 
+# Deteksi nama kolom otomatis untuk aman dari KeyError
+col_rob = None
+col_ara = None
+col_prov = None
+if df is not None:
+    col_rob = next((c for c in df.columns if 'robusta' in c.lower() and 'produksi' in c.lower()), None)
+    if not col_rob:
+        col_rob = next((c for c in df.columns if 'robusta' in c.lower()), None)
+        
+    col_ara = next((c for c in df.columns if 'arabika' in c.lower() and 'produksi' in c.lower()), None)
+    if not col_ara:
+        col_ara = next((c for c in df.columns if 'arabika' in c.lower()), None)
+        
+    col_prov = next((c for c in df.columns if 'provinsi' in c.lower()), None)
+
 # ==========================================
 # HALAMAN 1: OVERVIEW & PROVINSI
 # ==========================================
 if menu == "Overview & Provinsi":
-    # Hitung KPI secara otomatis dari dataset
     total_all_val = 2915421
     total_rob_val = 1921118
     total_ara_val = 994303
     
-    if not df_filtered.empty:
-        # Sesuaikan nama kolom di Excel lu jika berbeda
-        if 'Produksi Robusta (Ton)' in df_filtered.columns and 'Produksi Arabika (Ton)' in df_filtered.columns:
-            total_rob_val = df_filtered['Produksi Robusta (Ton)'].sum()
-            total_ara_val = df_filtered['Produksi Arabika (Ton)'].sum()
-            total_all_val = total_rob_val + total_ara_val
+    if not df_filtered.empty and col_rob and col_ara:
+        total_rob_val = df_filtered[col_rob].sum()
+        total_ara_val = df_filtered[col_ara].sum()
+        total_all_val = total_rob_val + total_ara_val
 
-    # Render Kotak KPI
     k1, k2, k3 = st.columns(3)
     with k1:
         st.markdown(f"""
@@ -123,17 +140,15 @@ if menu == "Overview & Provinsi":
         st.markdown("""<div style="background-color: #243542; padding: 15px; border-radius: 12px; border: 1px solid #324756;">
         <h4 style='color: white; font-size:16px;'>🏆 Top 10 Provinsi Penghasil Kopi</h4>""", unsafe_allow_html=True)
         
-        # Grafik Bar menggunakan Plotly
-        if not df_filtered.empty and 'Provinsi' in df_filtered.columns:
-            df_grouped = df_filtered.groupby('Provinsi')[['Produksi Robusta (Ton)', 'Produksi Arabika (Ton)']].sum().reset_index()
-            df_grouped = df_grouped.sort_values(by='Produksi Robusta (Ton)', ascending=False).head(10)
+        if not df_filtered.empty and col_prov and col_rob and col_ara:
+            df_grouped = df_filtered.groupby(col_prov)[[col_rob, col_ara]].sum().reset_index()
+            df_grouped = df_grouped.sort_values(by=col_rob, ascending=False).head(10)
             
             fig = go.Figure(data=[
-                go.Bar(name='Robusta', x=df_grouped['Provinsi'], y=df_grouped['Produksi Robusta (Ton)'], marker_color='#ffcc00'),
-                go.Bar(name='Arabika', x=df_grouped['Provinsi'], y=df_grouped['Produksi Arabika (Ton)'], marker_color='#e67e22')
+                go.Bar(name='Robusta', x=df_grouped[col_prov], y=df_grouped[col_rob], marker_color='#ffcc00'),
+                go.Bar(name='Arabika', x=df_grouped[col_prov], y=df_grouped[col_ara], marker_color='#e67e22')
             ])
         else:
-            # Data dummy pengaman jika file excel belum terbaca sempurna
             fig = go.Figure(data=[
                 go.Bar(name='Robusta', x=['Sumatera Selatan', 'Lampung', 'Aceh'], y=[1068716, 680000, 79800], marker_color='#ffcc00'),
                 go.Bar(name='Arabika', x=['Sumatera Selatan', 'Lampung', 'Aceh'], y=[50000, 10000, 412000], marker_color='#e67e22')
@@ -177,7 +192,6 @@ if menu == "Overview & Provinsi":
 elif menu == "Tren Tahunan":
     st.markdown("""<div style="background-color: #243542; padding: 20px; border-radius: 12px; border: 1px solid #324756;">""", unsafe_allow_html=True)
     
-    # Data dummy tren tahunan 2021-2026
     df_trend = pd.DataFrame({
         'Tahun': ['2021', '2022', '2023', '2024', '2025', '2026'],
         'Robusta': [350000, 150000, 340000, 355000, 360000, 370000],
