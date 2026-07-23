@@ -10,7 +10,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. Injeksi CSS Tema Gelap
+# 2. Injeksi CSS agar Tampilan Tetap Gelap (Dark Theme) & Elegan
 st.markdown("""
     <style>
     .stApp { background-color: #1c2a33 !important; }
@@ -21,7 +21,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Load Dataset Excel
+# 3. Fungsi Load Dataset (Menggunakan file Excel yang benar)
 @st.cache_data
 def load_data():
     try:
@@ -29,24 +29,12 @@ def load_data():
         df.columns = [str(c).strip() for c in df.columns]
         return df
     except Exception as e:
+        st.error(f"Gagal memuat file Excel: {e}")
         return None
 
 df = load_data()
 
-# Fungsi pembersih angka format Indonesia (mengubah "1.068.716" menjadi angka asli)
-def clean_val(val):
-    try:
-        if pd.isna(val):
-            return 0.0
-        if isinstance(val, (int, float)):
-            return float(val)
-        # Bersihkan titik pemisah ribuan
-        s = str(val).replace('.', '').replace(',', '.').replace(' ', '')
-        return float(s)
-    except:
-        return 0.0
-
-# 4. Sidebar Navigasi
+# 4. Sidebar Menu Navigasi
 with st.sidebar:
     st.markdown("<h2 style='color: #ffb833; margin-bottom: 0;'>KOPI Indonesia</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color: #b08d55; font-size: 12px; margin-top: -10px;'>Creative Analytics</p><br>", unsafe_allow_html=True)
@@ -57,7 +45,7 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-# 5. Header & Filter Tahun
+# 5. Header Utama & Filter Tahun
 col_head1, col_head2 = st.columns([3, 1])
 with col_head1:
     st.markdown("<h1 style='margin-bottom: 0px;'>Produksi Kopi Nasional</h1>", unsafe_allow_html=True)
@@ -80,16 +68,26 @@ def fmt(val):
         return str(val)
 
 # ==========================================
-# FILTER & PENGOLAHAN DATA WIDE FORMAT
+# PENCARIAN KOLOM OTOMATIS & FILTER
 # ==========================================
-cols_in_df = df.columns.tolist() if df is not None else []
+col_thn, col_rob, col_ara, col_prov = None, None, None, None
 
 if df is not None:
-    if selected_year != "Semua Tahun (2021-2026)" and selected_year in cols_in_df:
-        prov_col = next((c for c in df.columns if 'provinsi' in c.lower() or 'region' in c.lower() or 'daerah' in c.lower()), df.columns[0])
-        df_filtered = df[[prov_col, selected_year]].copy()
-        df_filtered.columns = ['Provinsi', 'Produksi']
-        df_filtered['Produksi'] = df_filtered['Produksi'].apply(clean_val)
+    for c in df.columns:
+        c_low = c.lower()
+        if 'tahun' in c_low or 'year' in c_low or 'thn' in c_low:
+            col_thn = c
+        if 'robusta' in c_low and ('produksi' in c_low or col_rob is None):
+            col_rob = c
+        if 'arabika' in c_low and ('produksi' in c_low or col_ara is None):
+            col_ara = c
+        if 'provinsi' in c_low or 'region' in c_low or 'daerah' in c_low:
+            col_prov = c
+
+    if col_thn and selected_year != "Semua Tahun (2021-2026)":
+        df_clean = df.copy()
+        df_clean['tahun_str'] = df_clean[col_thn].astype(str).str.replace('.0', '', regex=False).str.strip()
+        df_filtered = df_clean[df_clean['tahun_str'] == selected_year]
     else:
         df_filtered = df
 else:
@@ -100,16 +98,17 @@ else:
 # ==========================================
 if menu == "Overview & Provinsi":
     total_all_val = 0
-    if not df_filtered.empty:
-        if selected_year != "Semua Tahun (2021-2026)":
-            total_all_val = df_filtered['Produksi'].sum()
-        else:
-            # Jika semua tahun, jumlahkan seluruh kolom tahun yang ada (2021-2026)
-            tahun_list = [t for t in ['2021', '2022', '2023', '2024', '2025', '2026'] if t in df.columns]
-            if tahun_list:
-                total_all_val = sum(df[tahun_list].applymap(clean_val).sum().sum())
-            else:
-                total_all_val = 2915421
+    total_rob_val = 0
+    total_ara_val = 0
+    
+    if not df_filtered.empty and col_rob and col_ara:
+        total_rob_val = pd.to_numeric(df_filtered[col_rob], errors='coerce').sum()
+        total_ara_val = pd.to_numeric(df_filtered[col_ara], errors='coerce').sum()
+        total_all_val = total_rob_val + total_ara_val
+    elif df is not None and col_rob and col_ara:
+        total_rob_val = pd.to_numeric(df[col_rob], errors='coerce').sum()
+        total_ara_val = pd.to_numeric(df[col_ara], errors='coerce').sum()
+        total_all_val = total_rob_val + total_ara_val
 
     k1, k2, k3 = st.columns(3)
     with k1:
@@ -122,13 +121,13 @@ if menu == "Overview & Provinsi":
         st.markdown(f"""
         <div style="background-color: #243542; padding: 20px; border-radius: 12px; border: 1px solid #324756; border-bottom: 4px solid #f1c40f;">
             <p style="color: #92a4b2; font-size: 13px; font-weight: bold; margin: 0;">TOTAL ROBUSTA <span style="float: right; background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 10px; font-size: 11px;">Ton</span></p>
-            <h2 style="color: #ffffff; margin: 10px 0 0 0; font-size: 32px;">{fmt(total_all_val * 0.65)}</h2>
+            <h2 style="color: #ffffff; margin: 10px 0 0 0; font-size: 32px;">{fmt(total_rob_val)}</h2>
         </div>""", unsafe_allow_html=True)
     with k3:
         st.markdown(f"""
         <div style="background-color: #243542; padding: 20px; border-radius: 12px; border: 1px solid #324756; border-bottom: 4px solid #e67e22;">
             <p style="color: #92a4b2; font-size: 13px; font-weight: bold; margin: 0;">TOTAL ARABIKA <span style="float: right; background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 10px; font-size: 11px;">Ton</span></p>
-            <h2 style="color: #ffffff; margin: 10px 0 0 0; font-size: 32px;">{fmt(total_all_val * 0.35)}</h2>
+            <h2 style="color: #ffffff; margin: 10px 0 0 0; font-size: 32px;">{fmt(total_ara_val)}</h2>
         </div>""", unsafe_allow_html=True)
         
     st.markdown("<br>", unsafe_allow_html=True)
@@ -139,30 +138,30 @@ if menu == "Overview & Provinsi":
         st.markdown("""<div style="background-color: #243542; padding: 15px; border-radius: 12px; border: 1px solid #324756;">
         <h4 style='color: white; font-size:16px;'>🏆 Top 10 Provinsi Penghasil Kopi</h4>""", unsafe_allow_html=True)
         
-        if not df_filtered.empty:
-            if selected_year != "Semua Tahun (2021-2026)":
-                prov_col = 'Provinsi'
-                val_col = 'Produksi'
-            else:
-                prov_col = next((c for c in df.columns if 'provinsi' in c.lower() or 'region' in c.lower()), df.columns[0])
-                # Ambil kolom numerik pertama atau gabungkan
-                val_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
-                df_filtered = df.copy()
-                df_filtered['Val_Sum'] = df_filtered.select_dtypes(include=['number']).sum(axis=1) if len(df_filtered.select_dtypes(include=['number']).columns) > 0 else 0
-                val_col = 'Val_Sum'
-
-            df_g = df_filtered.sort_values(by=val_col, ascending=False).head(10)
+        if not df_filtered.empty and col_prov and col_rob and col_ara:
+            df_g = df_filtered.copy()
+            df_g[col_rob] = pd.to_numeric(df_g[col_rob], errors='coerce').fillna(0)
+            df_g[col_ara] = pd.to_numeric(df_g[col_ara], errors='coerce').fillna(0)
+            
+            df_grouped = df_g.groupby(col_prov)[[col_rob, col_ara]].sum().reset_index()
+            df_grouped = df_grouped.sort_values(by=col_rob, ascending=False).head(10)
             
             fig = go.Figure(data=[
-                go.Bar(name='Produksi', x=df_g[prov_col], y=df_g[val_col], marker_color='#ffcc00')
+                go.Bar(name='Robusta', x=df_grouped[col_prov], y=df_grouped[col_rob], marker_color='#ffcc00'),
+                go.Bar(name='Arabika', x=df_grouped[col_prov], y=df_grouped[col_ara], marker_color='#e67e22')
             ])
         else:
-            fig = go.Figure()
+            fig = go.Figure(data=[
+                go.Bar(name='Robusta', x=['Data Kosong'], y=[0], marker_color='#ffcc00'),
+                go.Bar(name='Arabika', x=['Data Kosong'], y=[0], marker_color='#e67e22')
+            ])
 
         fig.update_layout(
+            barmode='group',
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color='#899fae'),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
             margin=dict(l=0, r=0, t=30, b=0),
             height=350
         )
@@ -174,43 +173,64 @@ if menu == "Overview & Provinsi":
         <div style="background-color: #243542; padding: 25px; border-radius: 12px; border: 1px solid #324756; height: 100%;">
             <h4 style="color: #ffcc00; margin-top: 0; font-size: 16px;">💡 Analisis EduGrowth</h4>
             <p style="font-size: 14px; line-height: 1.6; color: #d0dbe3;">
-                Filter aktif: <b>{selected_year}</b>. Data berhasil dikalkulasi otomatis secara dinamis dari format tabel Excel.
+                Berdasarkan data <b>{selected_year}</b>, sistem memperbarui kalkulasi produksi secara dinamis sesuai filter tahun yang dipilih.
+            </p>
+            <br>
+            <p style="font-size: 11px; color: #6b8090; font-style: italic;">
+                *Teks analisis ini dihasilkan secara otomatis berdasarkan filter data yang dipilih.
             </p>
         </div>
         """, unsafe_allow_html=True)
 
 # ==========================================
-# HALAMAN 2: TREN TAHUNAN
+# HALAMAN 2: TREN TAHUNAN (DINAMIS DARI EXCEL)
 # ==========================================
 elif menu == "Tren Tahunan":
     st.markdown("""<div style="background-color: #243542; padding: 20px; border-radius: 12px; border: 1px solid #324756;">""", unsafe_allow_html=True)
     
-    t_years = ['2021', '2022', '2023', '2024', '2025', '2026']
-    t_vals = []
-    if df is not None:
-        for yr in t_years:
-            if yr in df.columns:
-                sum_yr = df[yr].apply(clean_val).sum()
-                t_vals.append(sum_yr)
-            else:
-                t_vals.append(0.0)
+    if df is not None and col_thn and col_rob and col_ara:
+        df_trend_raw = df.copy()
+        df_trend_raw['tahun_clean'] = df_trend_raw[col_thn].astype(str).str.replace('.0', '', regex=False).str.strip()
+        df_trend_raw[col_rob] = pd.to_numeric(df_trend_raw[col_rob], errors='coerce').fillna(0)
+        df_trend_raw[col_ara] = pd.to_numeric(df_trend_raw[col_ara], errors='coerce').fillna(0)
+        
+        # Kelompokkan dan jumlahkan total produksi per tahun dari data excel
+        df_trend_agg = df_trend_raw.groupby('tahun_clean')[[col_rob, col_ara]].sum().reset_index()
+        df_trend_agg = df_trend_agg.sort_values(by='tahun_clean')
+        
+        t_years = df_trend_agg['tahun_clean'].tolist()
+        t_rob = df_trend_agg[col_rob].tolist()
+        t_ara = df_trend_agg[col_ara].tolist()
     else:
-        t_vals = [0, 0, 0, 0, 0, 0]
+        # Fallback jika kolom tidak terdeteksi
+        t_years = ['2021', '2022', '2023', '2024', '2025', '2026']
+        t_rob = [0, 0, 0, 0, 0, 0]
+        t_ara = [0, 0, 0, 0, 0, 0]
 
     fig_line = go.Figure()
     fig_line.add_trace(go.Scatter(
-        x=t_years, y=t_vals, name='Total Produksi', 
+        x=t_years, y=t_rob, name='Robusta', 
         line=dict(color='#ffcc00', width=3, shape='spline'),
         fill='tozeroy', fillcolor='rgba(255, 204, 0, 0.1)'
     ))
+    fig_line.add_trace(go.Scatter(
+        x=t_years, y=t_ara, name='Arabika', 
+        line=dict(color='#e67e22', width=3, shape='spline'),
+        fill='tozeroy', fillcolor='rgba(230, 115, 0, 0.1)'
+    ))
     
     fig_line.update_layout(
-        title=dict(text="📈 Tren Produksi Kopi (Tahun ke Tahun)", font=dict(color='white', size=16)),
+        title=dict(text="📈 Tren Produksi Kopi (Tahun ke Tahun - Berdasarkan Data Excel)", font=dict(color='white', size=16)),
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='#243542',
         font=dict(color='#899fae'),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        margin=dict(l=20, r=20, t=60, b=20),
         height=500
     )
+    fig_line.update_xaxes(type='category', showgrid=False)
+    fig_line.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
+    
     st.plotly_chart(fig_line, use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -222,7 +242,8 @@ elif menu == "Data Spreadsheet":
         <h4 style='color: white; font-size:16px;'>📄 Data Spreadsheet Mentah (Dataset Kopi Nasional)</h4><br>""", unsafe_allow_html=True)
     
     if df is not None:
-        st.dataframe(df, use_container_width=True, height=450)
+        st.dataframe(df_filtered.drop(columns=['tahun_str'], errors='ignore'), use_container_width=True, height=450)
     else:
-        st.warning("File dataset belum ditemukan.")
+        st.warning("File dataset belum ditemukan di repositori GitHub Anda!")
+        
     st.markdown("</div>", unsafe_allow_html=True)
