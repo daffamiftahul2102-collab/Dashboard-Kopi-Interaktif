@@ -21,12 +21,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Fungsi Load Dataset (Menggunakan nama file Excel yang benar dari GitHub Anda)
+# 3. Fungsi Load Dataset (Menggunakan file Excel yang benar)
 @st.cache_data
 def load_data():
     try:
         df = pd.read_excel("Dataset_Kopi_Nasional_Wide_Format_2021_2026.xlsx") 
-        # Bersihkan spasi berlebih pada nama kolom
         df.columns = [str(c).strip() for c in df.columns]
         return df
     except Exception as e:
@@ -69,7 +68,7 @@ def fmt(val):
         return str(val)
 
 # ==========================================
-# LOGIKA FILTER TAHUN & PENCARIAN KOLOM OTOMATIS
+# PENCARIAN KOLOM OTOMATIS & FILTER
 # ==========================================
 col_thn, col_rob, col_ara, col_prov = None, None, None, None
 
@@ -85,7 +84,6 @@ if df is not None:
         if 'provinsi' in c_low or 'region' in c_low or 'daerah' in c_low:
             col_prov = c
 
-    # Proses Filtering Berdasarkan Tahun
     if col_thn and selected_year != "Semua Tahun (2021-2026)":
         df_clean = df.copy()
         df_clean['tahun_str'] = df_clean[col_thn].astype(str).str.replace('.0', '', regex=False).str.strip()
@@ -185,31 +183,44 @@ if menu == "Overview & Provinsi":
         """, unsafe_allow_html=True)
 
 # ==========================================
-# HALAMAN 2: TREN TAHUNAN
+# HALAMAN 2: TREN TAHUNAN (DINAMIS DARI EXCEL)
 # ==========================================
 elif menu == "Tren Tahunan":
     st.markdown("""<div style="background-color: #243542; padding: 20px; border-radius: 12px; border: 1px solid #324756;">""", unsafe_allow_html=True)
     
-    df_trend = pd.DataFrame({
-        'Tahun': ['2021', '2022', '2023', '2024', '2025', '2026'],
-        'Robusta': [350000, 150000, 340000, 355000, 360000, 370000],
-        'Arabika': [140000, 145000, 165000, 175000, 180000, 185000]
-    })
+    if df is not None and col_thn and col_rob and col_ara:
+        df_trend_raw = df.copy()
+        df_trend_raw['tahun_clean'] = df_trend_raw[col_thn].astype(str).str.replace('.0', '', regex=False).str.strip()
+        df_trend_raw[col_rob] = pd.to_numeric(df_trend_raw[col_rob], errors='coerce').fillna(0)
+        df_trend_raw[col_ara] = pd.to_numeric(df_trend_raw[col_ara], errors='coerce').fillna(0)
+        
+        # Kelompokkan dan jumlahkan total produksi per tahun dari data excel
+        df_trend_agg = df_trend_raw.groupby('tahun_clean')[[col_rob, col_ara]].sum().reset_index()
+        df_trend_agg = df_trend_agg.sort_values(by='tahun_clean')
+        
+        t_years = df_trend_agg['tahun_clean'].tolist()
+        t_rob = df_trend_agg[col_rob].tolist()
+        t_ara = df_trend_agg[col_ara].tolist()
+    else:
+        # Fallback jika kolom tidak terdeteksi
+        t_years = ['2021', '2022', '2023', '2024', '2025', '2026']
+        t_rob = [0, 0, 0, 0, 0, 0]
+        t_ara = [0, 0, 0, 0, 0, 0]
 
     fig_line = go.Figure()
     fig_line.add_trace(go.Scatter(
-        x=df_trend['Tahun'], y=df_trend['Robusta'], name='Robusta', 
+        x=t_years, y=t_rob, name='Robusta', 
         line=dict(color='#ffcc00', width=3, shape='spline'),
         fill='tozeroy', fillcolor='rgba(255, 204, 0, 0.1)'
     ))
     fig_line.add_trace(go.Scatter(
-        x=df_trend['Tahun'], y=df_trend['Arabika'], name='Arabika', 
+        x=t_years, y=t_ara, name='Arabika', 
         line=dict(color='#e67e22', width=3, shape='spline'),
         fill='tozeroy', fillcolor='rgba(230, 115, 0, 0.1)'
     ))
     
     fig_line.update_layout(
-        title=dict(text="📈 Tren Produksi Kopi (Tahun ke Tahun)", font=dict(color='white', size=16)),
+        title=dict(text="📈 Tren Produksi Kopi (Tahun ke Tahun - Berdasarkan Data Excel)", font=dict(color='white', size=16)),
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='#243542',
         font=dict(color='#899fae'),
